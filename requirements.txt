@@ -1,0 +1,7 @@
+flask
+openai
+line-bot-sdk
+faiss-cpu
+sentence-transformers
+scikit-learn
+pandas
