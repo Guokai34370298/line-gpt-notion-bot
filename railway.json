@@ -1,1 +1,9 @@
-{"builds": [{"src": ".", "use": "python"}]}
+{
+  "builds": [
+    {
+      "src": ".",
+      "use": "python",
+      "start": "python app.py"
+    }
+  ]
+}
