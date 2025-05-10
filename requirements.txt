@@ -1,5 +1,5 @@
 flask
-openai
+openai>=1.2.3
 line-bot-sdk
 faiss-cpu
 sentence-transformers
