@@ -1,19 +1,16 @@
-# query.py
-import pandas as pd
-
-def query_with_context(question: str) -> str:
-    """
-    從 notion_knowledge.csv 找到第一筆「問題」欄位包含 question 的回答。
-    若找不到，就回傳預設訊息。
-    """
+def query_with_context(question):
     try:
-        df = pd.read_csv("notion_knowledge.csv")
-    except Exception as e:
-        return f"無法讀取知識庫：{e}"
+        # 嘗試從 Notion API 抓資料（未來啟用）
+        from notion_live_query import query_live_from_notion
+        return query_live_from_notion(question)
+    except ImportError:
+        # 若尚未啟用 API，則 fallback 使用 CSV
+        import csv
+        result = ""
+        with open("notion_knowledge.csv", newline='', encoding='utf-8') as csvfile:
+            reader = csv.DictReader(csvfile)
+            for row in reader:
+                if question.strip() in row["內容"]:
+                    result += f"✅ {row['內容']}\n"
+        return result if result else "查無相關資料，請再確認或補充問題。"
 
-    # 假設你 CSV 裡有兩欄：'問題' 和 '回答'
-    for _, row in df.iterrows():
-        if str(row.get("問題", "")).strip() and str(row["問題"]) in question:
-            return str(row.get("回答", "")).strip()
-
-    return "找不到相關資料，請稍後再試或聯絡主管。"
