@@ -1,47 +1,102 @@
 import os
-from flask import Flask, request
+import requests
+import openai
+from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
+from linebot.exceptions import InvalidSignatureError
 from linebot.models import MessageEvent, TextMessage, TextSendMessage
-from openai import OpenAI
-from query import query_with_context  # 使用 query.py 裡的函式查找回應內容
 
-app = Flask(__name__)
+"""
+Minimal but **Notion‑driven** LINE↔︎GPT Bot
+=========================================
+特色
+----
+1. **先全文掃出 Notion Database** ➜ 只回傳「有命中關鍵字的條目」。  
+2. 若無命中，直接回「資料庫沒有相關資訊」，不給通用建議。  
+3. 不用向量檢索，單純 *substring* 比對；若要更進階可改成 Embedding + FAISS。
+"""
 
-# 初始化 LINE Bot
-line_bot_api = LineBotApi(os.getenv("LINE_CHANNEL_ACCESS_TOKEN"))
-handler = WebhookHandler(os.getenv("LINE_CHANNEL_SECRET"))
+# ---------- config ----------
+openai.api_key           = os.getenv("OPENAI_API_KEY")
+NOTION_TOKEN             = os.getenv("NOTION_TOKEN")
+NOTION_DATABASE_ID       = os.getenv("NOTION_DATABASE_ID")
+LINE_CHANNEL_ACCESS_TOKEN= os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
+LINE_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
+NOTION_VERSION           = "2022-06-28"
 
-# 初始化 OpenAI 客戶端（新版 openai >= 1.0）
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+# ---------- client ----------
+line_bot_api = LineBotApi(LINE_CHANNEL_ACCESS_TOKEN)
+handler      = WebhookHandler(LINE_CHANNEL_SECRET)
+app          = Flask(__name__)
 
-@app.route("/callback", methods=["POST"])
-def callback():
-    signature = request.headers["X-Line-Signature"]
-    body = request.get_data(as_text=True)
-    handler.handle(body, signature)
+# ---------- Notion helper ----------
+
+def fetch_all_pages():
+    """一次抓滿 100 筆（簡化示範）。"""
+    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    headers = {
+        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Notion-Version": NOTION_VERSION,
+        "Content-Type": "application/json",
+    }
+    res = requests.post(url, headers=headers, json={"page_size": 100})
+    res.raise_for_status()
+    return res.json()["results"]
+
+
+def search_notion(user_text: str):
+    """回傳所有包含使用者文字的條目 list[str]。"""
+    user_text_lower = user_text.lower()
+    matches = []
+    for page in fetch_all_pages():
+        props   = page["properties"]
+        content = props["內容"]["rich_text"][0]["text"]["content"] if props["內容"]["rich_text"] else ""
+        serial  = props["序號"]["title"][0]["plain_text"] if props["序號"]["title"] else ""
+        if user_text_lower in content.lower():
+            matches.append(f"{serial}: {content}")
+    return matches
+
+# ---------- GPT helper ----------
+
+def gpt_answer(user_text: str, chunks: list[str]) -> str:
+    if not chunks:
+        return "資料庫沒有相關資訊"
+
+    system_prompt = (
+        "你是鋼鐵公司內部助理，僅能根據下列 Notion 條目回答使用者問題，"
+        "不得添加未在條目中出現的資訊；若無法回答請說『資料庫沒有相關資訊』。\n\n"
+        + "\n".join(chunks)
+    )
+    completion = openai.ChatCompletion.create(
+        model="gpt-3.5-turbo",
+        temperature=0,
+        messages=[
+            {"role": "system", "content": system_prompt},
+            {"role": "user",   "content": user_text},
+        ],
+    )
+    return completion.choices[0].message.content.strip()
+
+# ---------- LINE webhook ----------
+
+@app.route("/webhook", methods=["POST"])
+def webhook():
+    signature = request.headers.get("X-Line-Signature", "")
+    body      = request.get_data(as_text=True)
+    try:
+        handler.handle(body, signature)
+    except InvalidSignatureError:
+        abort(400)
     return "OK"
+
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event):
-    question = event.message.text
-    context = query_with_context(question)  # 讀取本地CSV或未來改成 Notion API
-    prompt = f"你是鋼鐵公司助理，根據以下內容回答：\n\n{context}\n\n問題：{question}"
+    user_text = event.message.text.strip()
+    notion_hits = search_notion(user_text)
+    reply = gpt_answer(user_text, notion_hits)
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(text=reply))
 
-    try:
-        response = client.chat.completions.create(
-            model="gpt-4o",
-            messages=[{"role": "user", "content": prompt}]
-        )
-        answer = response.choices[0].message.content
-    except Exception as e:
-        answer = f"出現錯誤：{str(e)}"
-
-    line_bot_api.reply_message(
-        event.reply_token,
-        TextSendMessage(text=answer)
-    )
 
 if __name__ == "__main__":
-    port = int(os.environ.get("PORT", 8080))
-    app.run(host="0.0.0.0", port=port)
-
+    app.run(host="0.0.0.0", port=int(os.getenv("PORT", 5000)))
