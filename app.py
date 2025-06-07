@@ -18,8 +18,8 @@ Minimal but **Notion‑driven** LINE↔︎GPT Bot
 
 # ---------- config ----------
 openai.api_key           = os.getenv("OPENAI_API_KEY")
-NOTION_TOKEN             = os.getenv("NOTION_TOKEN")
-NOTION_DATABASE_ID       = os.getenv("NOTION_DATABASE_ID")
+NOTION_API_KEY             = os.getenv("NOTION_API_KEY")
+NOTION_DB_ID       = os.getenv("NOTION_DB_ID")
 LINE_CHANNEL_ACCESS_TOKEN= os.getenv("LINE_CHANNEL_ACCESS_TOKEN")
 LINE_CHANNEL_SECRET      = os.getenv("LINE_CHANNEL_SECRET")
 NOTION_VERSION           = "2022-06-28"
