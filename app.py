@@ -31,17 +31,19 @@ app          = Flask(__name__)
 
 # ---------- Notion helper ----------
 
+
 def fetch_all_pages():
     """一次抓滿 100 筆（簡化示範）。"""
-    url = f"https://api.notion.com/v1/databases/{NOTION_DATABASE_ID}/query"
+    url = f"https://api.notion.com/v1/databases/{NOTION_DB_ID}/query"
     headers = {
-        "Authorization": f"Bearer {NOTION_TOKEN}",
+        "Authorization": f"Bearer {NOTION_API_KEY}",
         "Notion-Version": NOTION_VERSION,
         "Content-Type": "application/json",
     }
     res = requests.post(url, headers=headers, json={"page_size": 100})
     res.raise_for_status()
     return res.json()["results"]
+
 
 
 def search_notion(user_text: str):
