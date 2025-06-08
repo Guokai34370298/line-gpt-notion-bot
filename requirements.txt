@@ -8,3 +8,4 @@ pandas
 requests
 redis>=5
 python-dotenv     # 如果本地測試用 .env
+regex
