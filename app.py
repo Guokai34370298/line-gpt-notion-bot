@@ -13,6 +13,7 @@ import os
 import re
 import requests
 import openai
+import regex  # pip install regex
 from flask import Flask, request, abort
 from linebot import LineBotApi, WebhookHandler
 from linebot.exceptions import InvalidSignatureError
@@ -71,17 +72,22 @@ def _extract_text(prop: dict) -> str:
     t = prop.get(prop.get("type", ""), [])
     return "".join(chunk["plain_text"] for chunk in t) if isinstance(t, list) else ""
 
+def _normalize(txt: str) -> str:
+    """移除所有空白、標點，再轉小寫"""
+    # 去除空白字元（含零寬）、所有 unicode 標點
+    return regex.sub(r\"[\\p{P}\\p{Z}\\p{C}]\", \"\", txt).lower()
+
 def search_notion(keyword: str) -> list[str]:
-    pat = re.compile(re.escape(keyword.lower()))
+    kw_norm = _normalize(keyword)
     hits: list[str] = []
-    for page in fetch_all_pages():
-        props = page["properties"]
-        # 聚合所有欄位文字
-        full_text = "  ".join(_extract_text(v) for v in props.values()).lower()
-        if pat.search(full_text):
-            serial = _extract_text(props.get("序號", {})) or "—"
-            snippet = full_text[:120] + ("…" if len(full_text) > 120 else "")
-            hits.append(f"{serial}: {snippet}")
+
+    for pg in fetch_all_pages():
+        props = pg[\"properties\"]
+        full_text = \"  \".join(_extract_text(v) for v in props.values())
+        if kw_norm in _normalize(full_text):
+            serial  = _extract_text(props.get(\"序號\", {})) or \"—\"
+            snippet = full_text[:120] + (\"…\" if len(full_text) > 120 else \"\")
+            hits.append(f\"{serial}: {snippet}\")
     return hits
 
 # ---------- GPT helper ----------
