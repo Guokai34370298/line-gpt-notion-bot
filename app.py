@@ -73,9 +73,7 @@ def _extract_text(prop: dict) -> str:
     return "".join(chunk["plain_text"] for chunk in t) if isinstance(t, list) else ""
 
 def _normalize(txt: str) -> str:
-    """移除所有空白、標點，再轉小寫"""
-    # 去除空白字元（含零寬）、所有 unicode 標點
-    return regex.sub(r\"[\\p{P}\\p{Z}\\p{C}]\", \"\", txt).lower()
+    return regex.sub(r"[\\p{P}\\p{Z}\\p{C}]+", "", txt).lower()
 
 def search_notion(keyword: str) -> list[str]:
     kw_norm = _normalize(keyword)
