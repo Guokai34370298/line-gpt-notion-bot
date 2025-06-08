@@ -1,16 +1,14 @@
 """
-LINE × Notion Knowledge Bot — final clean version (2025‑06‑08)
-==============================================================
-• 自動從 Notion Database 擷取文字（所有 property 的 title / rich_text）。  
-• `_normalize` 先移除標點、空白（含零寬）與控制字再比對，避免因為隱藏字元 miss hit。  
-• 缺少必要環境變數即 raise；requests、OpenAI 都設置 timeout。  
-• 專為 Railway + LINE OA 部署而寫，啟動路徑 `/webhook`。
+LINE × Notion Knowledge Bot — gpt‑4o edition (2025‑06‑08)
+========================================================
+• Model 已改為 **gpt‑4o**，仍使用 openai‑python 0.28.x 介面；如要新版 SDK 再升級即可。  
+• 其餘邏輯與先前一致：Notion 全欄位搜尋、文字正規化、Railway 環境變數偵錯。
 """
 
 from __future__ import annotations
 
 import os
-import regex   # pip install regex
+import regex
 import requests
 import openai
 from flask import Flask, request, abort
@@ -69,32 +67,27 @@ def fetch_all_pages() -> list[dict]:
 # ---------- text utils ----------
 
 def _extract_text(prop: dict) -> str:
-    """把 title / rich_text 內容串起來，其餘型別回空字串"""
     t = prop.get(prop.get("type", ""), [])
-    if isinstance(t, list):
-        return "".join(ch["plain_text"] for ch in t)
-    return ""
+    return "".join(r["plain_text"] for r in t) if isinstance(t, list) else ""
 
 def _normalize(txt: str) -> str:
-    """去除所有標點、空白(含零寬)、控制字再轉小寫"""
     return regex.sub(r"[\p{P}\p{Z}\p{C}]+", "", txt).lower()
 
 # ---------- search ----------
 
 def search_notion(keyword: str) -> list[str]:
-    kw_norm = _normalize(keyword)
+    kw = _normalize(keyword)
     hits: list[str] = []
-
     for pg in fetch_all_pages():
         props = pg["properties"]
-        full = "  ".join(_extract_text(v) for v in props.values())
-        if kw_norm in _normalize(full):
+        full  = "  ".join(_extract_text(v) for v in props.values())
+        if kw in _normalize(full):
             serial  = _extract_text(props.get("序號", {})) or "—"
             snippet = full[:120] + ("…" if len(full) > 120 else "")
             hits.append(f"{serial}: {snippet}")
     return hits
 
-# ---------- GPT helper ----------
+# ---------- GPT (gpt‑4o) ----------
 
 def gpt_answer(question: str, chunks: list[str]) -> str:
     if not chunks:
@@ -103,8 +96,8 @@ def gpt_answer(question: str, chunks: list[str]) -> str:
         "你是鋼鐵公司內部知識助理，只能根據下列條目回答；若條目不足以回答請說『資料庫沒有相關資訊』。\n\n"
         + "\n".join(chunks)
     )
-    rsp = openai.ChatCompletion.create(
-        model="gpt-3.5-turbo",
+    rsp = openai.ChatCompletion.create(   # openai==0.28.x 介面
+        model="gpt-4o",                 # ← 已改用 GPT‑4o
         temperature=0,
         messages=[
             {"role": "system", "content": sys_prompt},
