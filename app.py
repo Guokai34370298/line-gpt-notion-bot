@@ -135,19 +135,29 @@ def gpt_answer(question: str, chunks: list[str]) -> str:
 #  LINE webhook
 # ---------------------------------------------------------------------------
 
+# app.py   (只示意 webhook 區塊)
+
+import json, logging
+logging.basicConfig(level=logging.INFO)
+
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # DEBUG
-    print(request.get_data(as_text=True))
+    # ---------- DEBUG ----------
+    raw_body = request.get_data(as_text=True)
+    logging.info(f"<< LINE RAW >> %s", raw_body)      # <-- 一定會寫到 log
+    # 或者：
+    # print(raw_body, flush=True)                      # 也可以，但務必加 flush=True
+    # ----------------------------------------------
 
     signature = request.headers.get("X-Line-Signature", "")
-    body      = request.get_data(as_text=True)
+    body      = raw_body     # 不要再呼叫一次 get_data() 了，內容已在 raw_body
 
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
     return "OK"
+
 
 
 @handler.add(MessageEvent, message=TextMessage)
