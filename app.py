@@ -137,13 +137,18 @@ def gpt_answer(question: str, chunks: list[str]) -> str:
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
+    # DEBUG
+    print(request.get_data(as_text=True))
+
     signature = request.headers.get("X-Line-Signature", "")
     body      = request.get_data(as_text=True)
+
     try:
         handler.handle(body, signature)
     except InvalidSignatureError:
         abort(400)
     return "OK"
+
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event: MessageEvent):
