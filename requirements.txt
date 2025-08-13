@@ -1,11 +1,6 @@
-flask
-openai>=1.2.3
-line-bot-sdk
-faiss-cpu
-sentence-transformers
-scikit-learn
-pandas
-requests
-redis>=5
-python-dotenv     # 如果本地測試用 .env
-regex
+Flask>=3.0,<4
+requests>=2.31.0
+regex>=2023.10.3
+line-bot-sdk>=2.5.0
+openai>=1.33.0
+gunicorn>=21.2.0
