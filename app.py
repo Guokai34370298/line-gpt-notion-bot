@@ -375,6 +375,22 @@ def handle_message(event: MessageEvent):
     user_text = (event.message.text or "").strip()
     logging.info("User: %s", user_text)
 
+# 優先：使用者問的是某個「標籤/分類」嗎？（例如：客戶報價 / 3.客戶報價）
+label, items, total = list_label_items_by_keyword(user_text, limit=20)
+if items:
+    lines = []
+    for pg in items:
+        serial = _page_serial(pg) or "—"
+        title  = _page_title(pg) or "(未命名)"
+        lines.append(f"{serial}  {title}")
+    reply = (
+        f"【{label}】共有 {total} 筆，以下列出前 {len(items)} 筆：\n"
+        + "\n".join(lines) +
+        "\n\n要看其中一條，直接輸入序號（例如：3-7），或再補充關鍵字。"
+    )
+    line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
+    return
+
     # A) 太短/模糊（例如只輸入 1~2 個字），先提供候選條目請求釐清
     if len(_normalize(user_text)) <= 2:
         hits = search_notion(user_text, max_hits=3)
