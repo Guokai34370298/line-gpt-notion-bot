@@ -224,17 +224,17 @@ def webhook():
     return "OK"
 
 @handler.add(MessageEvent, message=TextMessage)
-def handle_message(event: MessageEvent):
-    user_text = (event.message.text or "").strip()
-    logging.info("User: %s", user_text)
-
-    # 0) 寒暄詞快速回覆（省 Token）
-    if any(g in user_text for g in GREETINGS):
-        line_bot_api.reply_message(
-            event.reply_token,
-            TextSendMessage(text=f"{user_text}～需要我幫你查內部流程或客戶應對範例嗎？")
-        )
+if len(user_text) <= 2:
+    hits = search_notion(user_text, max_hits=3)
+    if hits:
+        options = []
+        for i, h in enumerate(hits, 1):
+            head = h.splitlines()[0].strip()
+            options.append(f"{i}. {head}")
+        msg = "我找到以下相關條目，請告訴我要查哪一個，或補充關鍵資訊：\n" + "\n".join(options)
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(msg))
         return
+
 
     # 1) 先查 Notion（任何欄位＋內文）
     chunks = search_notion(user_text, max_hits=3)
