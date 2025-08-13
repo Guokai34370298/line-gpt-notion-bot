@@ -178,19 +178,25 @@ def search_notion(keyword: str, max_hits: int = 3) -> List[str]:
 # ---------- GPT helpers ----------
 GREETINGS = ("早安","午安","晚安","嗨","你好","您好","謝謝")
 
-def gpt_answer_from_kb(question: str, chunks: List[str]) -> str:
-    sys_prompt = (
-        "你是鋼鐵公司內部知識助理。回答時以以下 Notion 條目為依據；"
-        "若條目不足以完整回答，請先標註「以下為一般建議」，再給出專業、務實、簡潔的回覆。\n\n"
-        "--- 內部條目 ---\n" + "\n\n".join(chunks)
+def gpt_answer_from_kb(question: str, chunks: list[str]) -> str:
+    rules = (
+        "你是公司內部知識助理。嚴格規則：\n"
+        "1) 只能使用下列【來源】逐字摘錄或極簡重述，不得加入外部知識、定義或推論。\n"
+        "2) 若問題過短/模糊或來源指向多個不同主題，請先請使用者釐清，不要自行下定義。\n"
+        "3) 若來源不足以回答，回：資料庫沒有足夠資訊回答此問題。\n"
+        "4) 末行附【來源】列出使用到的條目（標題/序號）。\n"
     )
+    src = "\n\n".join(chunks)
     rsp = client.chat.completions.create(
         model="gpt-4o",
-        temperature=0.1,
-        messages=[{"role": "system", "content": sys_prompt},
-                  {"role": "user", "content": question}],
+        temperature=0,
+        messages=[
+            {"role": "system", "content": rules + "\n---【來源】---\n" + src},
+            {"role": "user",   "content": question},
+        ],
     )
     return (rsp.choices[0].message.content or "").strip()
+
 
 def gpt_general_chat(text: str) -> str:
     rsp = client.chat.completions.create(
