@@ -54,6 +54,52 @@ app          = Flask(__name__)
 # ---------------------------------------------------------------------------
 #  Notion helpers
 # ---------------------------------------------------------------------------
+# 依照「3-1」的格式做排序 key；抓不到就丟到很後面
+def _serial_sort_key(serial: str):
+    m = regex.search(r'(\d+)\s*-\s*(\d+)', serial or '')
+    if m:
+        return (int(m.group(1)), int(m.group(2)))
+    m2 = regex.search(r'(\d+)', serial or '')
+    return (int(m2.group(1)) if m2 else 999999, 999999)
+
+def list_label_items_by_keyword(keyword: str, limit: int = 20):
+    """
+    如果 keyword 看起來是在問某個「標籤（分類）」，
+    回傳：(選中的標籤, 已排序的頁面列表(前 limit 筆), 該標籤總數)
+    找不到就回 (None, [], 0)
+    """
+    kw = _normalize(keyword)
+    if not kw:
+        return None, [], 0
+
+    # 直接把整個 DB 拉回來，在記錄數量不大的情況下最穩（也避免去猜欄位型別）
+    pages = fetch_all_pages()
+
+    # 收集每個標籤底下的頁面
+    groups: dict[str, list[dict]] = {}
+    for pg in pages:
+        label = _page_label(pg)
+        if not label:
+            continue
+        lbl_norm = _normalize(label)
+        # 關鍵詞包含或被包含都算（"客戶報價" / "3.客戶報價" 都會命中）
+        if kw in lbl_norm or lbl_norm in kw:
+            groups.setdefault(label, []).append(pg)
+
+    if not groups:
+        return None, [], 0
+
+    # 選擇最貼近的那個標籤（優先完全相等，其次長度更接近的）
+    best_label = sorted(
+        groups.keys(),
+        key=lambda l: (_normalize(l) != kw, abs(len(_normalize(l)) - len(kw)))
+    )[0]
+
+    items = groups[best_label]
+    # 依序號排序（3-1、3-2、3-3 …）
+    items.sort(key=lambda pg: _serial_sort_key(_page_serial(pg)))
+    total = len(items)
+    return best_label, items[:limit], total
 
 def _post_notion(payload: dict) -> dict:
     url = f"https://api.notion.com/v1/databases/{NOTION_DB_ID}/query"
