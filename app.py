@@ -208,7 +208,8 @@ def webhook():
 
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event: MessageEvent):
-    user_text = event.message.text.strip()
+    user_text = (event.message.text or "").strip()
+    logging.info("User: %s", user_text)
     hits      = search_notion(user_text)
     reply     = gpt_answer(user_text, hits)
     line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
