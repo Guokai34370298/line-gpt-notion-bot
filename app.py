@@ -375,48 +375,45 @@ def handle_message(event: MessageEvent):
     user_text = (event.message.text or "").strip()
     logging.info("User: %s", user_text)
 
-# 優先：使用者問的是某個「標籤/分類」嗎？（例如：客戶報價 / 3.客戶報價）
-label, items, total = list_label_items_by_keyword(user_text, limit=20)
-if items:
-    lines = []
-    for pg in items:
-        serial = _page_serial(pg) or "—"
-        title  = _page_title(pg) or "(未命名)"
-        lines.append(f"{serial}  {title}")
-    reply = (
-        f"【{label}】共有 {total} 筆，以下列出前 {len(items)} 筆：\n"
-        + "\n".join(lines) +
-        "\n\n要看其中一條，直接輸入序號（例如：3-7），或再補充關鍵字。"
-    )
-    line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
-    return
+    # 1) 先判斷是否在講某個「標籤/分類」（例如：客戶報價）
+    label, items, total = list_label_items_by_keyword(user_text, limit=20)
+    if items:
+        lines = []
+        for pg in items:
+            serial = _page_serial(pg) or "-"
+            title  = _page_title(pg)  or "(未命名)"
+            lines.append(f"{serial}  {title}")
+        reply = (
+            f"「{label}」共有 {total} 筆，以下列出前 {len(items)} 筆：\n"
+            + "\n".join(lines)
+            + "\n\n要看其中一條，直接輸入序號（例如：3-7），或再補充關鍵字。"
+        )
+        line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
+        return   # ← 早退：已回覆清單
 
-    # A) 太短/模糊（例如只輸入 1~2 個字），先提供候選條目請求釐清
+    # 2) 查詢太短/模糊：丟候選條目讓使用者選
     if len(_normalize(user_text)) <= 2:
         hits = search_notion(user_text, max_hits=3)
         if hits:
             opts = []
             for i, c in enumerate(hits, 1):
-                head = c.splitlines()[0].strip()  # 第一行：我們的標頭
+                head = c.splitlines()[0].strip()
                 opts.append(f"{i}. {head}")
             ask = "我找到這些相關條目，請告訴我要看哪一個，或補充更多細節：\n" + "\n".join(opts)
             line_bot_api.reply_message(event.reply_token, TextSendMessage(ask))
-            return
+            return   # ← 在函式內
+
         # 真的沒有命中就走一般聊天
         reply = gpt_general_chat(user_text)
         line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
-        return
+        return   # ← 在函式內
 
-    # B) 一般情況：先查 Notion，再決定走 RAG 或一般聊天
+    # 3) 一般情況：Notion 檢索 + RAG
     chunks = search_notion(user_text, max_hits=3)
     logging.info("Notion hits: %d", len(chunks))
-
-    if chunks:
-        reply = gpt_answer_from_kb(user_text, chunks)
-    else:
-        reply = gpt_general_chat(user_text)
-
+    reply = gpt_answer(user_text, chunks)
     line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
+
 
 
 # ---------- main ----------
