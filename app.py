@@ -1,6 +1,6 @@
 """
 LINE × Notion Knowledge Bot  
-Upgraded to **openai‑python ≥ 1.0.0** & GPT‑4o (2025‑06‑08)
+Upgraded to **openai‑python ≥ 1.0.0** & GPT‑4o (2025‑06‑08)
 =========================================================
 • 使用新版 SDK：`from openai import OpenAI`, `client.chat.completions.create(...)`  
 • 仍保留 Notion 全欄位搜尋＋文字正規化＋LINE Webhook 流程  
@@ -54,7 +54,6 @@ app          = Flask(__name__)
 # ---------------------------------------------------------------------------
 #  Notion helpers
 # ---------------------------------------------------------------------------
-# 依照「3-1」的格式做排序 key；抓不到就丟到很後面
 def _serial_sort_key(serial: str):
     m = regex.search(r'(\d+)\s*-\s*(\d+)', serial or '')
     if m:
@@ -63,40 +62,30 @@ def _serial_sort_key(serial: str):
     return (int(m2.group(1)) if m2 else 999999, 999999)
 
 def list_label_items_by_keyword(keyword: str, limit: int = 20):
-    """
-    如果 keyword 看起來是在問某個「標籤（分類）」，
-    回傳：(選中的標籤, 已排序的頁面列表(前 limit 筆), 該標籤總數)
-    找不到就回 (None, [], 0)
-    """
     kw = _normalize(keyword)
     if not kw:
         return None, [], 0
 
-    # 直接把整個 DB 拉回來，在記錄數量不大的情況下最穩（也避免去猜欄位型別）
     pages = fetch_all_pages()
 
-    # 收集每個標籤底下的頁面
     groups: dict[str, list[dict]] = {}
     for pg in pages:
         label = _page_label(pg)
         if not label:
             continue
         lbl_norm = _normalize(label)
-        # 關鍵詞包含或被包含都算（"客戶報價" / "3.客戶報價" 都會命中）
         if kw in lbl_norm or lbl_norm in kw:
             groups.setdefault(label, []).append(pg)
 
     if not groups:
         return None, [], 0
 
-    # 選擇最貼近的那個標籤（優先完全相等，其次長度更接近的）
     best_label = sorted(
         groups.keys(),
         key=lambda l: (_normalize(l) != kw, abs(len(_normalize(l)) - len(kw)))
     )[0]
 
     items = groups[best_label]
-    # 依序號排序（3-1、3-2、3-3 …）
     items.sort(key=lambda pg: _serial_sort_key(_page_serial(pg)))
     total = len(items)
     return best_label, items[:limit], total
@@ -132,7 +121,6 @@ def _extract_text(prop: dict) -> str:
     return "".join(r["plain_text"] for r in t) if isinstance(t, list) else ""
 
 def _normalize(txt: str) -> str:
-    """Remove punctuation / spaces (incl. zero‑width) / control chars, to lower."""
     return regex.sub(r"[\p{P}\p{Z}\p{C}]+", "", txt).lower()
 
 # ---------------------------------------------------------------------------
@@ -167,7 +155,7 @@ def gpt_answer(question: str, chunks: list[str]) -> str:
     )
 
     rsp = client.chat.completions.create(
-        model="gpt-4o",           # ← 4o 模型
+        model="gpt-4o",
         temperature=0,
         messages=[
             {"role": "system", "content": sys_prompt},
@@ -181,22 +169,15 @@ def gpt_answer(question: str, chunks: list[str]) -> str:
 #  LINE webhook
 # ---------------------------------------------------------------------------
 
-# app.py   (只示意 webhook 區塊)
-
-import json, logging
+import logging
 logging.basicConfig(level=logging.INFO)
 
 @app.route("/webhook", methods=["POST"])
 def webhook():
-    # ---------- DEBUG ----------
-    raw_body = request.get_data(as_text=True)
-    logging.info(f"<< LINE RAW >> %s", raw_body)      # <-- 一定會寫到 log
-    # 或者：
-    # print(raw_body, flush=True)                      # 也可以，但務必加 flush=True
-    # ----------------------------------------------
-
+    raw_body  = request.get_data(as_text=True)
+    logging.info(f"<< LINE RAW >> %s", raw_body)
     signature = request.headers.get("X-Line-Signature", "")
-    body      = raw_body     # 不要再呼叫一次 get_data() 了，內容已在 raw_body
+    body      = raw_body
 
     try:
         handler.handle(body, signature)
@@ -205,13 +186,22 @@ def webhook():
     return "OK"
 
 
-
 @handler.add(MessageEvent, message=TextMessage)
 def handle_message(event: MessageEvent):
     user_text = (event.message.text or "").strip()
     logging.info("User: %s", user_text)
-    hits      = search_notion(user_text)
-    reply     = gpt_answer(user_text, hits)
+
+    # 員工查詢自己的 LINE User ID
+    if user_text == "我的ID":
+        user_id = event.source.user_id
+        line_bot_api.reply_message(
+            event.reply_token,
+            TextSendMessage(f"你的 LINE User ID 是：\n{user_id}")
+        )
+        return
+
+    hits  = search_notion(user_text)
+    reply = gpt_answer(user_text, hits)
     line_bot_api.reply_message(event.reply_token, TextSendMessage(reply))
 
 # ---------------------------------------------------------------------------
